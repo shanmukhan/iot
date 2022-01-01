@@ -13,6 +13,12 @@ q = Queue()
 
 buffer = b''
 
+WEBSOCKET_PORT = 8000      # data:: here -> ReactUI/client
+SERVER_SOCK_PORT = 15555   # data:: esp32 -> here
+
+WEBSOCKET_SLEEP_TIME = 0.1
+
+
 
 async def handle_client(client):
     print('client connected')
@@ -37,7 +43,7 @@ async def handle_client(client):
             #print('buffer data received')
             buffer += request
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
 
         #response = str(eval(request)) + '\n'
         #await loop.sock_sendall(client, response.encode('utf8'))
@@ -46,8 +52,8 @@ async def handle_client(client):
 
 async def run_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print('listening on 15555')
-    server.bind(('192.168.1.5', 15555))
+    print('listening on', SERVER_SOCK_PORT)
+    server.bind(('192.168.1.4', SERVER_SOCK_PORT))
     server.listen(8)
     server.setblocking(False)
 
@@ -67,11 +73,12 @@ async def echo(websocket):
 
 
         print(len(message))
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(WEBSOCKET_SLEEP_TIME)
         await websocket.send(message.decode('utf8'))
 
+
 async def main():
-    async with websockets.serve(echo, "localhost", 8000):
+    async with websockets.serve(echo, "localhost", WEBSOCKET_PORT):
         await asyncio.Future()  # run forever
 
 #print('Main starting')
