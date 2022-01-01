@@ -102,15 +102,20 @@ def start_server_socket(port):
     s.listen(5)
     
     print('server started')
+    global LIVE_STREAM
+    
     while True:
         conn, addr = s.accept()
         conn.settimeout(3.0)
         print('Got a connection from', addr)
         request = conn.recv(50)
-        print("Request is", request, str(request))
+        print("Request is", request)
+        
+        LIVE_STREAM = eval(request) if request else False
+        
         conn.close()
-        global LIVE_STREAM
-        LIVE_STREAM = bool(str(request))
+        
+        
         print('LIVE_STREAM is', LIVE_STREAM)
 
 
@@ -206,4 +211,5 @@ while True:
 #         #led.value(0)
 #         #sleep(3)
 #
+
 
