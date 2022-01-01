@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { w3cwebsocket as W3CWebSocket } from "websocket";
 
+import { Button } from "react-bootstrap";
+
 import ImageStore from "./ImageStore";
+import RestUtils from "./Utils/Rest";
+
 // import webserver from "./WebsocketServer";
 
 // webserver();
@@ -17,6 +21,18 @@ function Image(props) {
   ImageStore.subscribe(setData.bind(setData));
 
   console.log("rendering");
+
+  const post = (val) => {
+    if (val) {
+      RestUtils.get("/streamon", callback);
+    } else {
+      RestUtils.get("/streamoff", callback);
+    }
+  };
+
+  const callback = (res) => {
+    console.log("Response is: " + JSON.stringify(res));
+  };
 
   useEffect(() => {
     const client = new W3CWebSocket("ws://localhost:8000");
@@ -52,7 +68,17 @@ function Image(props) {
     };
   }, []);
 
-  return <img src={`data:image/jpeg;base64,${data}`} />;
+  return (
+    <>
+      <Button variant="secondary" onClick={() => post(true)}>
+        ON
+      </Button>
+      <Button variant="secondary" onClick={() => post(false)}>
+        OFF
+      </Button>
+      <img src={`data:image/jpeg;base64,${data}`} />;
+    </>
+  );
 }
 
 export default Image;
