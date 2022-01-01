@@ -4,12 +4,19 @@ import time
 import camera
 import ubinascii
 import socket
+import _thread as th
 
 
 
 # (host, port) = ('13.235.33.131', 5000)
 
-(host, port) = ('192.168.1.5', 15555)  # websocket conn
+(WEBSOCKET_HOST, WEBSOCKET_PORT) = ('192.168.1.5', 15555)  # websocket conn
+
+(REST_SERVICE_HOST, REST_SERVICE_PORT) = ('192.168.1.5', 11234)
+
+LOCAL_SERVER_SOCK_PORT = 82
+
+LIVE_STREAM = False
 
 
 def _post_headers(host, port, url, ctype='json', size=5):
@@ -41,14 +48,14 @@ def send(host, port, payload, retry_count=3):
 
 
 def post(url, data):
-    global host, port
+    global REST_SERVICE_PORT, REST_SERVICE_PORT
 
     data = ubinascii.b2a_base64(data)
 
-    headers = _post_headers(host, port, url, size=len(data))
+    headers = _post_headers(REST_SERVICE_HOST, REST_SERVICE_PORT, url, size=len(data))
     payload = headers + "\r\n" + data
 
-    send(host, port, payload)
+    send(REST_SERVICE_HOST, REST_SERVICE_PORT, payload)
 
 
 
@@ -72,9 +79,37 @@ def wifi():
     wlan.config('mac')      # get the interface's MAC address
     print('IP Config is', wlan.ifconfig())         # get the interface's IP/netmask/gw/DNS addresses
     print('Is connected2 to wifi? ', wlan.isconnected())
+    
+    while not wlan.isconnected():
+        pass
+    
+
+def access_point():
+    ap = network.WLAN(network.AP_IF) # create access-point interface
+    ap.config(essid='ESP-AP') # set the ESSID of the access point
+    ap.config(max_clients=10) # set how many clients can connect to the network
+    ap.active(True)         # activate the interface
+    print("Access point setup is complete")
+    
+    
+def start_server_socket(port):
+    print("port is", port)
+    port = port[0]
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(('', port))
+    s.listen(5)
+    
+    print('server started')
+    while True:
+        conn, addr = s.accept()
+        conn.settimeout(3.0)
+        print('Got a connection from', addr)
+        request = conn.recv(1024)
+        print("Request is", request)
+        conn.close()
 
 
-time.sleep(4)
+#time.sleep(4)
 
 wifi()
 
@@ -84,11 +119,18 @@ init_camera()
 
 time.sleep(5)
 
+th.start_new_thread(start_server_socket, (LOCAL_SERVER_SOCK_PORT,))
+
 
 def ws():
     #socket_ = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     socket_ = socket.socket()
-    socket_.connect((host, port))
+    socket_.connect((WEBSOCKET_HOST, WEBSOCKET_PORT))
+    global LIVE_STREAM
+    
+    if not LIVE_STREAM:
+        return
+    
     for i in range(99000):
         try:
             data = camera.capture()
@@ -97,19 +139,22 @@ def ws():
             socket_.send(data)
             print(i, 'SENT image', len(data))
             time.sleep(0.2)
-            #break
+            
+            if not LIVE_STREAM:
+                print('Break on live stream')
+                break
 
         except Exception as e:
             print('Retry', i, e)
             time.sleep(1)
         #if i == 9:
         #    socket_.send('close')
-
+            
     if socket_ and hasattr(socket_, 'close'):
         print('closing socket')
         socket_.close()
 
-ws()
+# ws()
 
 motion = False
 
@@ -121,10 +166,20 @@ def handle_interrupt(pin):
 
 
 led = Pin(4, Pin.OUT)
+
+
+while True:
+    if LIVE_STREAM:
+        ws()
+    elif CAPTURE_IMAGE:
+        buf = camera.capture()
+        post('/images', buf)
+        CAPTURE_IMAGE = False
+
 # pir = Pin(14, Pin.IN)
-#
+# 
 # pir.irq(trigger=Pin.IRQ_RISING, handler=handle_interrupt)
-#
+# 
 # while True:
 #     if motion:
 #         print('Motion detected! Interrupt caused by:', interrupt_pin)
