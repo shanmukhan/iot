@@ -40,6 +40,7 @@ def send(host, port, payload, retry_count=3):
             socket_.connect((host, port))
             socket_.send(payload)
             print('SENT payload')
+            break
 
         except Exception as e:
             print('Retry', i, e)
@@ -167,6 +168,8 @@ def handle_interrupt(pin):
 
 
 led = Pin(4, Pin.OUT)
+
+post('/register', '')
 
 print("Starting while loop")
 
