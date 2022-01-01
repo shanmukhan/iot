@@ -10,13 +10,14 @@ import _thread as th
 
 # (host, port) = ('13.235.33.131', 5000)
 
-(WEBSOCKET_HOST, WEBSOCKET_PORT) = ('192.168.1.5', 15555)  # websocket conn
+(WEBSOCKET_HOST, WEBSOCKET_PORT) = ('192.168.1.4', 15555)  # websocket conn
 
-(REST_SERVICE_HOST, REST_SERVICE_PORT) = ('192.168.1.5', 11234)
+(REST_SERVICE_HOST, REST_SERVICE_PORT) = ('192.168.1.4', 11234)
 
 LOCAL_SERVER_SOCK_PORT = 82
 
 LIVE_STREAM = False
+CAPTURE_IMAGE = False
 
 
 def _post_headers(host, port, url, ctype='json', size=5):
@@ -94,7 +95,7 @@ def access_point():
     
 def start_server_socket(port):
     print("port is", port)
-    port = port[0]
+    port = port
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(('', port))
     s.listen(5)
@@ -167,6 +168,7 @@ def handle_interrupt(pin):
 
 led = Pin(4, Pin.OUT)
 
+print("Starting while loop")
 
 while True:
     if LIVE_STREAM:
