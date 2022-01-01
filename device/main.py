@@ -106,9 +106,12 @@ def start_server_socket(port):
         conn, addr = s.accept()
         conn.settimeout(3.0)
         print('Got a connection from', addr)
-        request = conn.recv(1024)
-        print("Request is", request)
+        request = conn.recv(50)
+        print("Request is", request, str(request))
         conn.close()
+        global LIVE_STREAM
+        LIVE_STREAM = bool(str(request))
+        print('LIVE_STREAM is', LIVE_STREAM)
 
 
 #time.sleep(4)
@@ -142,6 +145,8 @@ def ws():
             print(i, 'SENT image', len(data))
             time.sleep(0.2)
             
+            
+            global LIVE_STREAM
             if not LIVE_STREAM:
                 print('Break on live stream')
                 break
