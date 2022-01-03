@@ -11,6 +11,13 @@ from umqttsimple import MQTTClient
 
 # (host, port) = ('13.235.33.131', 5000)
 
+MQTT_SERVER = '192799ffef1a4066a37a6ce3ea09d8bf.s1.eu.hivemq.cloud'
+MQTT_PORT = 8883
+MQTT_TOPIC = "/topic/subtopic/s12a"
+MQTT_CLIENT_ID = 'simple_id_rnd'
+MQTT_USERNAME = 'shanmukhan'
+MQTT_PASSWORD = 'Iotuser1'
+
 (WEBSOCKET_HOST, WEBSOCKET_PORT) = ('13.234.113.5', 15555)  # websocket conn
 
 (REST_SERVICE_HOST, REST_SERVICE_PORT) = ('13.234.113.5', 11234)
@@ -141,6 +148,29 @@ def start_server_socket(host, port):
         
         
         print('LIVE_STREAM is', LIVE_STREAM)
+        
+
+def mqtt_sub_cb(topic, msg):
+  print('Callback from mqtt:', (topic, msg))
+  
+
+def mqtt_connect_and_subscribe():
+  global client_id, mqtt_server, topic_sub
+  # client = MQTTClient(MQTT_CLIENT_ID, MQTT_SERVER, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD, 60)
+  # client = MQTTClient(MQTT_CLIENT_ID, 'broker.mqttdashboard.com', 1883)
+  
+  client = MQTTClient(MQTT_CLIENT_ID, 'broker.hivemq.com', 1883)
+  
+  client.set_callback(mqtt_sub_cb)
+  client.connect()
+  client.subscribe(MQTT_TOPIC)
+  print('Connected to MQTT broker')
+  return client
+
+def restart_and_reconnect():
+  print('Failed to connect to MQTT broker. Reconnecting...')
+  time.sleep(10)
+  machine.reset()
 
 
 #time.sleep(4)
@@ -154,7 +184,14 @@ init_camera()
 
 time.sleep(5)
 
-th.start_new_thread(start_server_socket, (LOCAL_SERVER_IP, LOCAL_SERVER_SOCK_PORT))
+try:
+    client = mqtt_connect_and_subscribe()
+    print('mqtt client is', client)
+except OSError as e:
+    restart_and_reconnect()
+    print(e)
+
+#th.start_new_thread(start_server_socket, (LOCAL_SERVER_IP, LOCAL_SERVER_SOCK_PORT))
 
 
 def ws():
@@ -204,7 +241,7 @@ def handle_interrupt(pin):
 
 led = Pin(4, Pin.OUT)
 
-post('/register', '')
+# post('/register', '')
 
 print("Starting while loop")
 
@@ -215,6 +252,11 @@ while True:
         buf = camera.capture()
         post('/images', buf)
         CAPTURE_IMAGE = False
+        
+    #print('check msg')
+    client.check_msg()  # this is non-blocking, use wait_msg() for blocking
+    #print('after check msg')
+        
 
 # pir = Pin(14, Pin.IN)
 # 
@@ -236,8 +278,3 @@ while True:
 #         #led.value(0)
 #         #sleep(3)
 #
-
-
-
-
-
