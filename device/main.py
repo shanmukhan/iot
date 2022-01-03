@@ -5,15 +5,17 @@ import camera
 import ubinascii
 import socket
 import _thread as th
+from umqttsimple import MQTTClient
 
 
 
 # (host, port) = ('13.235.33.131', 5000)
 
-(WEBSOCKET_HOST, WEBSOCKET_PORT) = ('192.168.1.4', 15555)  # websocket conn
+(WEBSOCKET_HOST, WEBSOCKET_PORT) = ('13.234.113.5', 15555)  # websocket conn
 
-(REST_SERVICE_HOST, REST_SERVICE_PORT) = ('192.168.1.4', 11234)
+(REST_SERVICE_HOST, REST_SERVICE_PORT) = ('13.234.113.5', 11234)
 
+LOCAL_SERVER_IP = '192.168.1.35'
 LOCAL_SERVER_SOCK_PORT = 82
 
 LIVE_STREAM = False
@@ -86,6 +88,28 @@ def wifi():
         pass
     
 
+def wifi_static():
+    import network
+
+    wlan = network.WLAN(network.STA_IF) # create station interface
+    #wlan.init(WLAN.STA)
+    # address, network mask, gateway address, dns server address
+    wlan.ifconfig(('192.168.1.35', '255.255.255.0', '192.168.1.1', '8.8.8.8'))
+    
+    wlan.active(True)       # activate the interface
+    wlan.scan()             # scan for access points
+    print('Is connected to wifi? ', wlan.isconnected())      # check if the station is connected to an AP
+    wlan.connect('NETGEAR35', 'silentvase911') # connect to an AP
+    wlan.config('mac')      # get the interface's MAC address
+    print('IP Config is', wlan.ifconfig())         # get the interface's IP/netmask/gw/DNS addresses
+    print('Is connected2 to wifi? ', wlan.isconnected())
+    
+    while not wlan.isconnected():
+        pass
+    
+    print('*************** IP Config is', wlan.ifconfig())         # get the interface's IP/netmask/gw/DNS addresses
+    
+
 def access_point():
     ap = network.WLAN(network.AP_IF) # create access-point interface
     ap.config(essid='ESP-AP') # set the ESSID of the access point
@@ -94,11 +118,11 @@ def access_point():
     print("Access point setup is complete")
     
     
-def start_server_socket(port):
+def start_server_socket(host, port):
     print("port is", port)
     port = port
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind(('', port))
+    s.bind((host, port))
     s.listen(5)
     
     print('server started')
@@ -121,6 +145,7 @@ def start_server_socket(port):
 
 #time.sleep(4)
 
+#wifi_static()
 wifi()
 
 time.sleep(4)
@@ -129,7 +154,7 @@ init_camera()
 
 time.sleep(5)
 
-th.start_new_thread(start_server_socket, (LOCAL_SERVER_SOCK_PORT,))
+th.start_new_thread(start_server_socket, (LOCAL_SERVER_IP, LOCAL_SERVER_SOCK_PORT))
 
 
 def ws():
@@ -211,5 +236,8 @@ while True:
 #         #led.value(0)
 #         #sleep(3)
 #
+
+
+
 
 
