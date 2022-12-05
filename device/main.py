@@ -11,16 +11,20 @@ from umqttsimple import MQTTClient
 
 # (host, port) = ('13.235.33.131', 5000)
 
-MQTT_SERVER = '192799ffef1a4066a37a6ce3ea09d8bf.s1.eu.hivemq.cloud'
+MQTT_SERVER = '54.73.92.158' #'192799ffef1a4066a37a6ce3ea09d8bf.s1.eu.hivemq.cloud'
 MQTT_PORT = 8883
-MQTT_TOPIC = "/topic/subtopic/s12a"
+MQTT_SUB_TOPIC = "/shanmukhan/iot/esp32/onoff"
+MQTT_PUB_TOPIC = "/shanmukhan/iot/esp32/stream"
 MQTT_CLIENT_ID = 'simple_id_rnd'
-MQTT_USERNAME = 'shanmukhan'
-MQTT_PASSWORD = 'Iotuser1'
+MQTT_USERNAME = b'shanmukhan'
+MQTT_PASSWORD = b'Iotuser1'
 
-(WEBSOCKET_HOST, WEBSOCKET_PORT) = ('13.234.113.5', 15555)  # websocket conn
 
-(REST_SERVICE_HOST, REST_SERVICE_PORT) = ('13.234.113.5', 11234)
+MQTT_CLIENT = None
+
+(WEBSOCKET_HOST, WEBSOCKET_PORT) = ('34.100.132.136', 15555)  # websocket conn
+
+(REST_SERVICE_HOST, REST_SERVICE_PORT) = ('34.100.132.136', 11234)
 
 LOCAL_SERVER_IP = '192.168.1.35'
 LOCAL_SERVER_SOCK_PORT = 82
@@ -86,7 +90,8 @@ def wifi():
     wlan.active(True)       # activate the interface
     wlan.scan()             # scan for access points
     print('Is connected to wifi? ', wlan.isconnected())      # check if the station is connected to an AP
-    wlan.connect('NETGEAR35', 'silentvase911') # connect to an AP
+    #wlan.connect('NETGEAR35', 'silentvase911') # connect to an AP
+    wlan.connect('BSRSP', 'BSRSP$126') # connect to an AP
     wlan.config('mac')      # get the interface's MAC address
     print('IP Config is', wlan.ifconfig())         # get the interface's IP/netmask/gw/DNS addresses
     print('Is connected2 to wifi? ', wlan.isconnected())
@@ -107,6 +112,7 @@ def wifi_static():
     wlan.scan()             # scan for access points
     print('Is connected to wifi? ', wlan.isconnected())      # check if the station is connected to an AP
     wlan.connect('NETGEAR35', 'silentvase911') # connect to an AP
+    # wlan.connect('BSRSP', 'BSRSP$126') # connect to an AP
     wlan.config('mac')      # get the interface's MAC address
     print('IP Config is', wlan.ifconfig())         # get the interface's IP/netmask/gw/DNS addresses
     print('Is connected2 to wifi? ', wlan.isconnected())
@@ -150,22 +156,26 @@ def start_server_socket(host, port):
         print('LIVE_STREAM is', LIVE_STREAM)
         
 
-def mqtt_sub_cb(topic, msg):
+def mqtt_sub_cb(topic, msg, retain=False, dup=False):
   print('Callback from mqtt:', (topic, msg))
+  global LIVE_STREAM
+  LIVE_STREAM = eval(msg) if msg else None
   
 
 def mqtt_connect_and_subscribe():
-  global client_id, mqtt_server, topic_sub
-  # client = MQTTClient(MQTT_CLIENT_ID, MQTT_SERVER, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD, 60)
-  # client = MQTTClient(MQTT_CLIENT_ID, 'broker.mqttdashboard.com', 1883)
   
-  client = MQTTClient(MQTT_CLIENT_ID, 'broker.hivemq.com', 1883)
+  # client = MQTTClient(MQTT_CLIENT_ID, MQTT_SERVER, 1883, MQTT_USERNAME, MQTT_PASSWORD, ssl=False)
   
-  client.set_callback(mqtt_sub_cb)
-  client.connect()
-  client.subscribe(MQTT_TOPIC)
+  global MQTT_CLIENT
+  
+  MQTT_CLIENT = MQTTClient(MQTT_CLIENT_ID, 'broker.hivemq.com', 1883)
+  
+  MQTT_CLIENT.set_callback(mqtt_sub_cb)
+  MQTT_CLIENT.connect()
+  MQTT_CLIENT.subscribe(MQTT_SUB_TOPIC)
   print('Connected to MQTT broker')
-  return client
+  return MQTT_CLIENT
+
 
 def restart_and_reconnect():
   print('Failed to connect to MQTT broker. Reconnecting...')
@@ -178,17 +188,19 @@ def restart_and_reconnect():
 #wifi_static()
 wifi()
 
-time.sleep(4)
+#time.sleep(4)
 
 init_camera()
 
-time.sleep(5)
+#time.sleep(5)
 
 try:
     client = mqtt_connect_and_subscribe()
     print('mqtt client is', client)
 except OSError as e:
-    restart_and_reconnect()
+    print('******')
+    print(e)
+    # restart_and_reconnect()
     print(e)
 
 #th.start_new_thread(start_server_socket, (LOCAL_SERVER_IP, LOCAL_SERVER_SOCK_PORT))
@@ -228,6 +240,41 @@ def ws():
         print('closing socket')
         socket_.close()
 
+
+def mqtt_stream():
+    
+    print('turning on stream')
+    
+    global MQTT_CLIENT
+    global LIVE_STREAM
+    
+    if not LIVE_STREAM:
+        return
+    
+    for i in range(99000):
+        try:
+            data = camera.capture()
+            print('.')
+            data = ubinascii.b2a_base64(data)
+            
+            MQTT_CLIENT.publish(MQTT_PUB_TOPIC, data)
+            
+            print(i, 'SENT image', len(data))
+            #time.sleep(0.2)
+            
+            
+            global LIVE_STREAM
+            if not LIVE_STREAM:
+                print('Break on live stream')
+                break
+
+        except Exception as e:
+            print('Retry', i, e)
+            time.sleep(1)
+        #if i == 9:
+        #    socket_.send('close')
+            
+    
 # ws()
 
 motion = False
@@ -247,14 +294,21 @@ print("Starting while loop")
 
 while True:
     if LIVE_STREAM:
-        ws()
+        #ws()
+        mqtt_stream()
     elif CAPTURE_IMAGE:
         buf = camera.capture()
         post('/images', buf)
         CAPTURE_IMAGE = False
         
     #print('check msg')
-    client.check_msg()  # this is non-blocking, use wait_msg() for blocking
+    if LIVE_STREAM:
+        time.sleep(5)
+    else:
+        time.sleep(1)
+        
+    MQTT_CLIENT.check_msg()  # this is non-blocking, use wait_msg() for blocking
+    
     #print('after check msg')
         
 
