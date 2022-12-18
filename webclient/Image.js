@@ -35,7 +35,7 @@ function Image(props) {
   };
 
   useEffect(() => {
-    const client = new W3CWebSocket("ws://localhost:8000");
+    const client = new W3CWebSocket("ws://34.100.132.136:8000");
 
     client.onopen = () => {
       console.log("WebSocket Client Connected");

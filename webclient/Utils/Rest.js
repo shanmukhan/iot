@@ -19,7 +19,7 @@ class RestUtils {
     }
   }
 
-  static api = axios.create({ baseURL: "http://localhost:11234" });
+  static api = axios.create({ baseURL: "http://34.100.132.136:11234" });
 
   static get(url, callback) {
     console.log("GET: " + url);
