@@ -407,11 +407,7 @@ void app_main(void){
 
     init_camera();
 
-    // camera_fb_t *pic = esp_camera_fb_get();
-
-    // printf("Size of pic is %d bytes", pic->len);
-
-	esp_err_t status = WIFI_FAILURE;
+    esp_err_t status = WIFI_FAILURE;
 
 	//initialize storage
     esp_err_t ret = nvs_flash_init();
@@ -429,16 +425,7 @@ void app_main(void){
 		return;
 	}
 	
-	// status = connect_tcp_server();
-	// if (TCP_SUCCESS != status)
-	// {
-	// 	ESP_LOGI(TAG, "Failed to connect to remote server, dying...");
-	// 	return;
-	// }
-
-    // get_rest_function();
-    
-    mqtt_app_start();
+	mqtt_app_start();
 
     printf("starting mqtt testing");
     vTaskDelay(5000/portTICK_PERIOD_MS);
@@ -449,10 +436,6 @@ void app_main(void){
             camera_fb_t *pic = esp_camera_fb_get();
             printf("Size of pic is %d bytes", pic->len);
             
-            // unsigned char output[64];
-            // size_t outlen;
-            // mbedtls_base64_encode(output, 64, &outlen, (unsigned char *)pic->buf, pic->len);
-
             uint8_t *output = calloc((pic->len + 2 - ((pic->len + 2) % 3)) / 3 * 4 + 1, sizeof(char));
             // <--- equation from internet
             size_t outlen = 0;
@@ -463,10 +446,11 @@ void app_main(void){
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
             esp_camera_fb_return(pic);
             pic = NULL;
+            free(output);
         }else{
             printf("*");
         }
-        vTaskDelay(500/portTICK_PERIOD_MS);
+        vTaskDelay(100/portTICK_PERIOD_MS);
     }
 
 }
