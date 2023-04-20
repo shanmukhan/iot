@@ -19,6 +19,8 @@
 
 #include "mqtt_client.h"
 
+#include "mbedtls/base64.h"
+
 /** DEFINES **/
 #define WIFI_SUCCESS 1 << 0
 #define WIFI_FAILURE 1 << 1
@@ -446,15 +448,24 @@ void app_main(void){
         if(SWITCH){
             camera_fb_t *pic = esp_camera_fb_get();
             printf("Size of pic is %d bytes", pic->len);
-            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)pic->buf, pic->len, 1, 0);
+            
+            // unsigned char output[64];
+            // size_t outlen;
+            // mbedtls_base64_encode(output, 64, &outlen, (unsigned char *)pic->buf, pic->len);
+
+            uint8_t *output = calloc((pic->len + 2 - ((pic->len + 2) % 3)) / 3 * 4 + 1, sizeof(char));
+            // <--- equation from internet
+            size_t outlen = 0;
+            int err = mbedtls_base64_encode(output, (pic->len + 2 - ((pic->len + 2) % 3)) / 3 * 4 + 1,
+            &outlen, pic->buf, pic->len);
+
+            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)output, outlen, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
             esp_camera_fb_return(pic);
             pic = NULL;
         }else{
             printf("*");
         }
-        
-
         vTaskDelay(500/portTICK_PERIOD_MS);
     }
 
