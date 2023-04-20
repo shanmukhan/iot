@@ -85,7 +85,7 @@ static const char *TAG = "WIFI";
 
 #endif
 
-char *SWITCH;
+bool SWITCH;
 esp_mqtt_client_handle_t CLIENT;
 
 
@@ -147,6 +147,16 @@ esp_err_t client_event_handler(esp_http_client_event_handle_t evt){
     return ESP_OK;
 }
 
+void get_rest_function(){
+    esp_http_client_config_t client_configuration = {
+        .url = "http://ip.jsontest.com/",
+        .event_handler = client_event_handler
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&client_configuration);
+    esp_http_client_perform(client);
+    esp_http_client_cleanup(client);
+}
+/** FUNCTIONS **/
 
 static void log_error_if_nonzero(const char *message, int error_code)
 {
@@ -278,6 +288,46 @@ esp_err_t connect_wifi()
     return status;
 }
 
+// connect to the server and return the result
+esp_err_t connect_tcp_server(void)
+{
+	struct sockaddr_in serverInfo = {0};
+	char readBuffer[1024] = {0};
+
+	serverInfo.sin_family = AF_INET;
+	serverInfo.sin_addr.s_addr = 0x0100007f;
+	serverInfo.sin_port = htons(12345);
+
+
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (sock < 0)
+	{
+		ESP_LOGE(TAG, "Failed to create a socket..?");
+		return TCP_FAILURE;
+	}
+
+
+	if (connect(sock, (struct sockaddr *)&serverInfo, sizeof(serverInfo)) != 0)
+	{
+		ESP_LOGE(TAG, "Failed to connect to %s!", inet_ntoa(serverInfo.sin_addr.s_addr));
+		close(sock);
+		return TCP_FAILURE;
+	}
+
+	ESP_LOGI(TAG, "Connected to TCP server.");
+	bzero(readBuffer, sizeof(readBuffer));
+    int r = read(sock, readBuffer, sizeof(readBuffer)-1);
+    for(int i = 0; i < r; i++) {
+        putchar(readBuffer[i]);
+    }
+
+    if (strcmp(readBuffer, "HELLO") == 0)
+    {
+    	ESP_LOGI(TAG, "WE DID IT!");
+    }
+
+    return TCP_SUCCESS;
+}
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -318,8 +368,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        SWITCH = event->data;
-        printf("DATA=%.*s\r\n %s", event->data_len, event->data, SWITCH);
+        printf("DATA=%.*s\r\n", event->data_len, event->data);
+        bool val = (strcmp(event->data, "true") == 0) ? false : true;
+        printf("SWITCH=%d val=%d \n", SWITCH, val);
+        SWITCH = !SWITCH;
         break;
     case MQTT_EVENT_ERROR:
         ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
@@ -351,21 +403,21 @@ static void mqtt_app_start(void) {
 
 void app_main(void){
 
-    // init_camera();
+    init_camera();
 
     // camera_fb_t *pic = esp_camera_fb_get();
 
     // printf("Size of pic is %d bytes", pic->len);
 
-    //initialize storage
+	esp_err_t status = WIFI_FAILURE;
+
+	//initialize storage
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
       ESP_ERROR_CHECK(nvs_flash_erase());
       ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-
-	esp_err_t status = WIFI_FAILURE;
 
     // connect to wireless AP
 	status = connect_wifi();
@@ -375,19 +427,33 @@ void app_main(void){
 		return;
 	}
 	
-	    
+	// status = connect_tcp_server();
+	// if (TCP_SUCCESS != status)
+	// {
+	// 	ESP_LOGI(TAG, "Failed to connect to remote server, dying...");
+	// 	return;
+	// }
+
+    // get_rest_function();
+    
     mqtt_app_start();
 
+    printf("starting mqtt testing");
+    vTaskDelay(5000/portTICK_PERIOD_MS);
+
     while (true){
-        printf("SWITCH value is %s \n", SWITCH);
-        if(strcmp(SWITCH, "true") == 0){
-            // camera_fb_t *pic = esp_camera_fb_get();
-            // printf("Size of pic is %d bytes", pic->len);
-            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", "data_3", 0, 1, 0);
+        printf("SWITCH value is %d \n", SWITCH);
+        if(SWITCH){
+            camera_fb_t *pic = esp_camera_fb_get();
+            printf("Size of pic is %d bytes", pic->len);
+            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)pic->buf, pic->len, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+            esp_camera_fb_return(pic);
+            pic = NULL;
         }else{
             printf("*");
         }
+        
 
         vTaskDelay(500/portTICK_PERIOD_MS);
     }
