@@ -23,7 +23,11 @@
 
 #include "time.h"
 
-#define CAMERA_QUEUE_SIZE   25
+
+#define CAMERA_QUEUE_SIZE   20
+
+#define HOST "20.193.244.45"
+#define PORT "8081"
 
 QueueHandle_t camera_queue;
 QueueHandle_t mqtt_queue;
@@ -123,9 +127,9 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
 
     .pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_SXGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
+    .frame_size = FRAMESIZE_HD,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
 
-    .jpeg_quality = 12, //0-63 lower number means higher quality
+    .jpeg_quality = 16, //0-63 lower number means higher quality
     .fb_count = 1       //if more than one, i2s runs in continuous mode. Use only with JPEG
 };
 
@@ -156,16 +160,6 @@ esp_err_t client_event_handler(esp_http_client_event_handle_t evt){
     return ESP_OK;
 }
 
-void get_rest_function(){
-    esp_http_client_config_t client_configuration = {
-        .url = "http://ip.jsontest.com/",
-        .event_handler = client_event_handler
-    };
-    esp_http_client_handle_t client = esp_http_client_init(&client_configuration);
-    esp_http_client_perform(client);
-    esp_http_client_cleanup(client);
-}
-/** FUNCTIONS **/
 
 static void log_error_if_nonzero(const char *message, int error_code)
 {
@@ -297,46 +291,6 @@ esp_err_t connect_wifi()
     return status;
 }
 
-// connect to the server and return the result
-esp_err_t connect_tcp_server(void)
-{
-	struct sockaddr_in serverInfo = {0};
-	char readBuffer[1024] = {0};
-
-	serverInfo.sin_family = AF_INET;
-	serverInfo.sin_addr.s_addr = 0x0100007f;
-	serverInfo.sin_port = htons(12345);
-
-
-	int sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock < 0)
-	{
-		ESP_LOGE(TAG, "Failed to create a socket..?");
-		return TCP_FAILURE;
-	}
-
-
-	if (connect(sock, (struct sockaddr *)&serverInfo, sizeof(serverInfo)) != 0)
-	{
-		ESP_LOGE(TAG, "Failed to connect to %s!", inet_ntoa(serverInfo.sin_addr.s_addr));
-		close(sock);
-		return TCP_FAILURE;
-	}
-
-	ESP_LOGI(TAG, "Connected to TCP server.");
-	bzero(readBuffer, sizeof(readBuffer));
-    int r = read(sock, readBuffer, sizeof(readBuffer)-1);
-    for(int i = 0; i < r; i++) {
-        putchar(readBuffer[i]);
-    }
-
-    if (strcmp(readBuffer, "HELLO") == 0)
-    {
-    	ESP_LOGI(TAG, "WE DID IT!");
-    }
-
-    return TCP_SUCCESS;
-}
 
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
@@ -347,17 +301,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        msg_id = esp_mqtt_client_publish(client, "/test", "test message from esp32", 0, 1, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-
         msg_id = esp_mqtt_client_subscribe(client, "/switch", 0);
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
-        msg_id = esp_mqtt_client_subscribe(client, "/test", 1);
-        ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-
-        msg_id = esp_mqtt_client_unsubscribe(client, "/test");
-        ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -414,8 +360,9 @@ void camera_task(void *pvParameters)
 {
     printf("Camera task created.");
     while (1) {
-        printf("#");
+        
         if(SWITCH){
+            printf("#");
             camera_fb_t *pic = esp_camera_fb_get();
             // printf("Size of pic is %d bytes\n", pic->len);
             
@@ -430,7 +377,7 @@ void camera_task(void *pvParameters)
             esp_camera_fb_return(pic);
             pic = NULL;
             // free(output);
-            vTaskDelay(200/portTICK_PERIOD_MS);
+            vTaskDelay(100/portTICK_PERIOD_MS);
         }else{
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
@@ -449,7 +396,7 @@ void mqtt_publish_task(void *pvParameters)
             clock_t start = clock();
             
             // int msg_id = esp_mqtt_client_enqueue(CLIENT, "/live", (char *)frame, 0, 1, 0, 0);
-            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)frame, 0, 1, 0);
+            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)frame, 0, 0, 0);
             free(frame);
 
             clock_t end = clock();
@@ -463,6 +410,63 @@ void mqtt_publish_task(void *pvParameters)
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         }
     }
+}
+
+void socket_client_task(void *pvParameters)
+{
+    struct addrinfo hints = {0};
+    hints.ai_family = AF_INET; // IPv4
+    hints.ai_socktype = SOCK_STREAM; // TCP
+
+    struct addrinfo *result;
+    if (getaddrinfo(HOST, PORT, &hints, &result) != 0) {
+        perror("getaddrinfo");
+    }
+
+    int sockfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    if (sockfd == -1) {
+        printf("Unable to create socket");
+        perror("socket");
+        
+    }
+
+    if (connect(sockfd, result->ai_addr, result->ai_addrlen) == -1) {
+        printf("Unable to connect to socket");
+        perror("connect");
+        close(sockfd);
+        
+    }
+
+    camera_fb_t *frame;
+
+    while (1) {
+        printf("*");
+        if (xQueueReceive(camera_queue, &frame, portMAX_DELAY)) {
+            // Send a message to the server
+            clock_t start = clock();
+            int len = send(sockfd, (char *)frame, frame->len, 0);
+            clock_t end = clock();
+            free(frame);
+            if (len < 0) {
+                ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+                
+            }
+
+            ESP_LOGI(TAG, "sent one image");
+
+            double elapsed_time = (double)(end - start) / CLOCKS_PER_SEC;
+
+            // Print the elapsed time
+            printf("Time taken to send to mqtt: %.2f seconds\n", elapsed_time);
+
+        }      
+    }
+     // Close the socket
+    shutdown(sockfd, SHUT_RDWR);
+    close(sockfd);
+    vTaskDelay(2000 / portTICK_PERIOD_MS); // Wait for 2 seconds before trying to reconnect
+
+    vTaskDelete(NULL);
 }
 
 void app_main(void){
@@ -499,6 +503,8 @@ void app_main(void){
     // create camera task
     xTaskCreate(&camera_task, "camera_task", 4096, NULL, 5, NULL);
     // create MQTT publish task
-    xTaskCreate(&mqtt_publish_task, "mqtt_publish_task", 4096, NULL, 5, NULL);
+    // xTaskCreate(&mqtt_publish_task, "mqtt_publish_task", 4096, NULL, 5, NULL);
+
+    xTaskCreate(&socket_client_task, "socket_client_task", 4096, NULL, 5, NULL);
 
 }
