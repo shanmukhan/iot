@@ -116,7 +116,7 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
 
     .pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_UXGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
+    .frame_size = FRAMESIZE_SXGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
 
     .jpeg_quality = 12, //0-63 lower number means higher quality
     .fb_count = 1       //if more than one, i2s runs in continuous mode. Use only with JPEG
@@ -442,15 +442,17 @@ void app_main(void){
             int err = mbedtls_base64_encode(output, (pic->len + 2 - ((pic->len + 2) % 3)) / 3 * 4 + 1,
             &outlen, pic->buf, pic->len);
 
-            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)output, outlen, 1, 0);
+            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)output, outlen, 0, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
             esp_camera_fb_return(pic);
             pic = NULL;
             free(output);
+            vTaskDelay(100/portTICK_PERIOD_MS);
         }else{
             printf("*");
+            vTaskDelay(1000/portTICK_PERIOD_MS);
         }
-        vTaskDelay(100/portTICK_PERIOD_MS);
+        
     }
 
 }
