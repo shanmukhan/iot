@@ -20,13 +20,14 @@
 #include "mqtt_client.h"
 
 #include "mbedtls/base64.h"
+// #include "esp_base64.h"
 
 #include "time.h"
 
 
 #define CAMERA_QUEUE_SIZE   20
 
-#define HOST "20.193.244.45"
+#define HOST "20.219.36.78"
 #define PORT "8081"
 
 QueueHandle_t camera_queue;
@@ -127,9 +128,9 @@ static camera_config_t camera_config = {
     .ledc_channel = LEDC_CHANNEL_0,
 
     .pixel_format = PIXFORMAT_JPEG, //YUV422,GRAYSCALE,RGB565,JPEG
-    .frame_size = FRAMESIZE_HD,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
+    .frame_size = FRAMESIZE_SXGA,    //QQVGA-UXGA Do not use sizes above QVGA when not JPEG
 
-    .jpeg_quality = 16, //0-63 lower number means higher quality
+    .jpeg_quality = 10, //0-63 lower number means higher quality
     .fb_count = 1       //if more than one, i2s runs in continuous mode. Use only with JPEG
 };
 
@@ -242,8 +243,10 @@ esp_err_t connect_wifi()
     /** START THE WIFI DRIVER **/
     wifi_config_t wifi_config = {
         .sta = {
-            .ssid = "Subramanyam_2G",
-            .password = "Sahasra089",
+            // .ssid = "Subramanyam_2G",
+            // .password = "Sahasra089",
+            .ssid = "vedasaipriya",
+            .password = "9290427243",
 	     .threshold.authmode = WIFI_AUTH_WPA2_PSK,
             .pmf_cfg = {
                 .capable = true,
@@ -346,7 +349,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 static void mqtt_app_start(void) {
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtt://20.193.244.45",
+        .broker.address.uri = "mqtt://20.219.36.78",
+        // .broker.address.uri = "mqtt://192.168.29.242",
     };
     
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
@@ -359,12 +363,13 @@ static void mqtt_app_start(void) {
 void camera_task(void *pvParameters)
 {
     printf("Camera task created.");
+    int i = 1;
     while (1) {
         
         if(SWITCH){
+            i++;
             printf("#");
             camera_fb_t *pic = esp_camera_fb_get();
-            // printf("Size of pic is %d bytes\n", pic->len);
             
             uint8_t *output = calloc((pic->len + 2 - ((pic->len + 2) % 3)) / 3 * 4 + 1, sizeof(char));
             // <--- equation from internet
@@ -372,16 +377,20 @@ void camera_task(void *pvParameters)
             int err = mbedtls_base64_encode(output, (pic->len + 2 - ((pic->len + 2) % 3)) / 3 * 4 + 1,
             &outlen, pic->buf, pic->len);
 
+            // printf("Size of pic is %d bytes and base64 is %u %u %d \n", pic->len, sizeof(output), sizeof(*output), strlen((char *)output));
+
             xQueueSend(camera_queue, &output, 0);
 
             esp_camera_fb_return(pic);
             pic = NULL;
-            // free(output);
+            // free(output);  // this is done at mqtt publish task
             vTaskDelay(100/portTICK_PERIOD_MS);
         }else{
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
     }
+    // printf("Exiting camera task");
+    // vTaskDelete(NULL);
 }
 
 
@@ -389,14 +398,15 @@ void mqtt_publish_task(void *pvParameters)
 {
     printf("mqtt publish task created.");
 
-    camera_fb_t *frame;
+    uint8_t *frame;
     while (1) {
         printf("*");
         if (xQueueReceive(camera_queue, &frame, portMAX_DELAY)) {
             clock_t start = clock();
             
-            // int msg_id = esp_mqtt_client_enqueue(CLIENT, "/live", (char *)frame, 0, 1, 0, 0);
-            int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)frame, 0, 0, 0);
+            int msg_id = esp_mqtt_client_enqueue(CLIENT, "/live", (char *)frame, 0, 1, 0, 0);
+            // int msg_id = esp_mqtt_client_publish(CLIENT, "/live", (char *)frame, 0, 0, 0);
+            int size = strlen((char *) frame);
             free(frame);
 
             clock_t end = clock();
@@ -407,7 +417,7 @@ void mqtt_publish_task(void *pvParameters)
             // Print the elapsed time
             printf("Time taken to send to mqtt: %.2f seconds\n", elapsed_time);
 
-            ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+            ESP_LOGI(TAG, "sent publish successful, msg_id=%d %.2f seconds\n", msg_id, elapsed_time);
         }
     }
 }
@@ -437,27 +447,28 @@ void socket_client_task(void *pvParameters)
         
     }
 
-    camera_fb_t *frame;
+    uint8_t *frame;
 
     while (1) {
         printf("*");
         if (xQueueReceive(camera_queue, &frame, portMAX_DELAY)) {
             // Send a message to the server
             clock_t start = clock();
-            int len = send(sockfd, (char *)frame, frame->len, 0);
+            int len = send(sockfd, (void *)frame, strlen((char *)frame), 0);
             clock_t end = clock();
-            free(frame);
+            
             if (len < 0) {
                 ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
                 
             }
 
-            ESP_LOGI(TAG, "sent one image");
-
             double elapsed_time = (double)(end - start) / CLOCKS_PER_SEC;
 
             // Print the elapsed time
             printf("Time taken to send to mqtt: %.2f seconds\n", elapsed_time);
+            ESP_LOGI(TAG, "sent publish successful size %d", strlen((char *)frame));
+
+            free(frame);
 
         }      
     }
@@ -503,8 +514,8 @@ void app_main(void){
     // create camera task
     xTaskCreate(&camera_task, "camera_task", 4096, NULL, 5, NULL);
     // create MQTT publish task
-    // xTaskCreate(&mqtt_publish_task, "mqtt_publish_task", 4096, NULL, 5, NULL);
+    xTaskCreate(&mqtt_publish_task, "mqtt_publish_task", 4096, NULL, 5, NULL);
 
-    xTaskCreate(&socket_client_task, "socket_client_task", 4096, NULL, 5, NULL);
+    // xTaskCreate(&socket_client_task, "socket_client_task", 4096, NULL, 5, NULL);
 
 }
